@@ -36,6 +36,7 @@ htmlcov/
 .tox/
 .coverage
 .cache
+.pytest_cache/
 nosetests.xml
 coverage.xml
 
@@ -59,3 +60,6 @@ target/
 
 # temporary file
 *.swp
+
+# known_hosts file
+known_hosts
