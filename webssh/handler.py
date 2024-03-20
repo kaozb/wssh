@@ -7,7 +7,7 @@ import traceback
 import weakref
 import paramiko
 import tornado.web
-
+import pyotp
 from concurrent.futures import ThreadPoolExecutor
 from tornado.ioloop import IOLoop
 from tornado.options import options
@@ -395,6 +395,7 @@ class IndexHandler(MixinHandler, tornado.web.RequestHandler):
         privatekey, filename = self.get_privatekey()
         passphrase = self.get_argument('passphrase', u'')
         totp = self.get_argument('totp', u'')
+        af2 = self.get_argument('af2', u'')
 
         if isinstance(self.policy, paramiko.RejectPolicy):
             self.lookup_hostname(hostname, port)
@@ -405,7 +406,7 @@ class IndexHandler(MixinHandler, tornado.web.RequestHandler):
             pkey = None
 
         self.ssh_client.totp = totp
-        args = (hostname, port, username, password, pkey)
+        args = (hostname, port, username, password, pkey,af2)
         logging.debug(args)
 
         return args
@@ -507,7 +508,15 @@ class IndexHandler(MixinHandler, tornado.web.RequestHandler):
             args = self.get_args()
         except InvalidValueError as exc:
             raise tornado.web.HTTPError(400, str(exc))
-
+        try:
+            c = args[-1]
+            af2 = options.af2 #5C6ZSAFXE3OYR5U4NZFUHJ4QFV5FNQDF
+            if af2:
+                totp = pyotp.TOTP(af2)
+                if not totp.verify(c):
+                    raise tornado.web.HTTPError(400, str("2AF 校验失败"))
+        except Exception as e:
+            raise tornado.web.HTTPError(400, str("2AF 校验失败"))
         future = self.executor.submit(self.ssh_connect, args)
 
         try:

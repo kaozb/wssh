@@ -33,5 +33,6 @@ setup(
     install_requires=[
         'tornado>=4.5.0',
         'paramiko>=2.3.1',
+        'pyotp>=2.9.0',
     ],
 )

@@ -48,6 +48,7 @@ define('delay', type=float, default=3, help='The delay to call recycle_worker')
 define('maxconn', type=int, default=20,
        help='Maximum live connections (ssh sessions) per client')
 define('font', default='', help='custom font filename')
+define('af2', default='', help='2AF code!!')
 define('encoding', default='',
        help='''The default character encoding of ssh servers.
 Example: --encoding='utf-8' to solve the problem with some switches&routers''')

@@ -1,3 +1,17 @@
+## 相比于原版，增加了双重验证码
+
+保证ssh即使密码被破解也不会轻易被攻破
+
+[2AF相关资料](https://docs.github.com/zh/authentication/securing-your-account-with-two-factor-authentication-2fa/about-two-factor-authentication)
+启用方法：
+```bash
+wssh --af2=随机字符串
+```
+
+登录时除了要求输入密码（基于时间的一次性密码），还要求输入6位数的验证码（验证码是根据字符串+时间计算而出） 不可逆。
+可以自行下载2AF工具计算或者在线工具计算。注意保存那个随机字符串    如果怀疑泄露，直接更换即可
+
+
 ## WebSSH
 
 [![python](https://github.com/huashengdun/webssh/actions/workflows/python.yml/badge.svg)](https://github.com/huashengdun/webssh/actions/workflows/python.yml)
