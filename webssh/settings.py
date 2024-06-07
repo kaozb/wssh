@@ -58,7 +58,7 @@ define('version', type=bool, help='Show version information',
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 font_dirs = ['webssh', 'static', 'css', 'fonts']
-max_body_size = 1 * 1024 * 1024
+max_body_size = 100 * 1024 * 1024
 
 
 class Font(object):
@@ -96,6 +96,7 @@ def get_server_settings(options):
         xheaders=options.xheaders,
         max_body_size=max_body_size,
         trusted_downstream=get_trusted_downstream(options.tdstream)
+
     )
     return settings
 

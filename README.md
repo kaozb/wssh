@@ -1,5 +1,10 @@
 ## 相比于原版，增加了双重验证码
 
+
+##  新增文件上传功能 2024-06-07
+![](https://wework.qpic.cn/wwpic3az/724267_7g-wP-SnSWG_aDE_1717741238)
+
+## 增加2次验证功能 
 保证ssh即使密码被破解也不会轻易被攻破
 
 [2AF相关资料](https://docs.github.com/zh/authentication/securing-your-account-with-two-factor-authentication-2fa/about-two-factor-authentication)

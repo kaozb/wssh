@@ -357,6 +357,7 @@ jQuery(function($){
       state = DISCONNECTED;
       return;
     }
+    waiter.show();
     var statusDiv = document.getElementById('status');
     statusDiv.className =  msg.id;
     var ws_url = window.location.href.split(/\?|#/, 1)[0].replace('http', 'ws'),
