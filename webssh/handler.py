@@ -561,6 +561,8 @@ class filesendHandler(MixinHandler, tornado.web.RequestHandler):
         tmpfiledir = "uploads/"+id
         if not os.path.exists(tmpfiledir):
             os.makedirs(tmpfiledir)
+        if worker == None:
+            self.finish({'error': 'sftp 异常'})
 
         try:
             for file in files:
@@ -572,7 +574,7 @@ class filesendHandler(MixinHandler, tornado.web.RequestHandler):
                 worker.sftp.put(filepath, filename)
         except Exception as e:
             logging.error(e)
-
+            self.finish({'error': e})
         shutil.rmtree(tmpfiledir)
         self.finish({'success': 'ok'})
 

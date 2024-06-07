@@ -898,7 +898,7 @@ var statusDiv = document.getElementById('status').className
                 if (response.success) {
                     dropArea.innerHTML = "上传成功";
                 } else if (response.error) {
-                    dropArea.innerHTML = "上传结束";
+                    dropArea.innerHTML = response.error;
                 } else {
                     dropArea.innerHTML = "上传失败";
                 }
