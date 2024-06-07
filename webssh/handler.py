@@ -1,6 +1,8 @@
 import io
 import json
 import logging
+import os
+import shutil
 import socket
 import struct
 import traceback
@@ -466,7 +468,12 @@ class IndexHandler(MixinHandler, tornado.web.RequestHandler):
         term = self.get_argument('term', u'') or u'xterm'
         chan = ssh.invoke_shell(term=term)
         chan.setblocking(0)
-        worker = Worker(self.loop, ssh, chan, dst_addr)
+        try:
+            sftp = ssh.open_sftp()
+        except Exception as exc:
+            logging.error("sftp start error")
+            sftp = None
+        worker = Worker(self.loop, ssh, chan, dst_addr,sftp)
         worker.encoding = options.encoding if options.encoding else \
             self.get_default_encoding(ssh)
         return worker
@@ -534,6 +541,41 @@ class IndexHandler(MixinHandler, tornado.web.RequestHandler):
 
         self.write(self.result)
 
+class filesendHandler(MixinHandler, tornado.web.RequestHandler):
+
+
+
+    def initialize(self, loop):
+        logging.error("=" * 100)
+        logging.error(clients)
+        super(filesendHandler, self).initialize(loop)
+
+    def post(self):
+        id = self.get_value('id')
+        files = self.request.files['files']
+
+
+        self.src_addr = self.get_client_addr()
+        workers = clients.get(self.src_addr[0])
+        worker = workers.get(id)
+        tmpfiledir = "uploads/"+id
+        if not os.path.exists(tmpfiledir):
+            os.makedirs(tmpfiledir)
+
+        try:
+            for file in files:
+                filename = file['filename']
+                filepath = os.path.join(tmpfiledir, filename)
+                with open(filepath, 'wb') as f:
+                    f.write(file['body'])
+                    logging.warning(f"File {filename} is saved.")
+                worker.sftp.put(filepath, filename)
+        except Exception as e:
+            logging.error(e)
+
+        shutil.rmtree(tmpfiledir)
+        self.finish({'success': 'ok'})
+
 
 class WsockHandler(MixinHandler, tornado.websocket.WebSocketHandler):
 
@@ -557,7 +599,7 @@ class WsockHandler(MixinHandler, tornado.websocket.WebSocketHandler):
         else:
             worker = workers.get(worker_id)
             if worker:
-                workers[worker_id] = None
+                # workers[worker_id] = None
                 self.set_nodelay(True)
                 worker.set_handler(self)
                 self.worker_ref = weakref.ref(worker)

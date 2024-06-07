@@ -357,7 +357,8 @@ jQuery(function($){
       state = DISCONNECTED;
       return;
     }
-
+    var statusDiv = document.getElementById('status');
+    statusDiv.className =  msg.id;
     var ws_url = window.location.href.split(/\?|#/, 1)[0].replace('http', 'ws'),
         join = (ws_url[ws_url.length-1] === '/' ? '' : '/'),
         url = ws_url + join + 'ws?id=' + msg.id,
@@ -856,4 +857,55 @@ jQuery(function($){
     }
   }
 
+});
+
+
+
+var dropArea = document.getElementById('drop-area');
+
+dropArea.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    dropArea.style.border = '2px dashed #000';
+});
+
+dropArea.addEventListener('dragleave', function (e) {
+    e.preventDefault();
+    dropArea.style.border = '2px dashed #ccc';
+});
+
+dropArea.addEventListener('drop', function (e) {
+    e.preventDefault();
+
+    dropArea.style.border = '2px dashed #ccc';
+    dropArea.innerHTML = '<i class="fas fa-2x fa-sync fa-spin"></i>';
+    var files = e.dataTransfer.files;
+var statusDiv = document.getElementById('status').className
+    if (files.length > 0) {
+        var formData = new FormData();
+
+        // 将所有文件添加到 FormData 对象中
+        for (var i = 0; i < files.length; i++) {
+            formData.append('files', files[i]);
+        }
+        formData.append('id',statusDiv)
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/filesend', true); // 修改上传文件的 URL
+
+        xhr.onload = function () {
+            if (xhr.status === 200) {
+                var response = JSON.parse(xhr.responseText);
+                if (response.success) {
+                    dropArea.innerHTML = "上传成功";
+                } else if (response.error) {
+                    dropArea.innerHTML = "上传结束";
+                } else {
+                    dropArea.innerHTML = "上传失败";
+                }
+            } else {
+                dropArea.innerHTML = "上传失败";
+            }
+            dropArea.innerHTML = "上传结束;拖入文件继续上传";
+        };
+        xhr.send(formData);
+    }
 });

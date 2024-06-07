@@ -35,10 +35,11 @@ def recycle_worker(worker):
 
 
 class Worker(object):
-    def __init__(self, loop, ssh, chan, dst_addr):
+    def __init__(self, loop, ssh, chan, dst_addr,sftp):
         self.loop = loop
         self.ssh = ssh
         self.chan = chan
+        self.sftp = sftp
         self.dst_addr = dst_addr
         self.fd = chan.fileno()
         self.id = self.gen_id()
