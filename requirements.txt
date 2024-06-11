@@ -1,3 +1,4 @@
 paramiko==3.0.0
 tornado==6.2.0
 pyotp==2.9.0
+scp>=0.15.0

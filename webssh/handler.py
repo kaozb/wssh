@@ -11,6 +11,8 @@ import paramiko
 import tornado.web
 import pyotp
 from concurrent.futures import ThreadPoolExecutor
+
+from scp import SCPClient
 from tornado.ioloop import IOLoop
 from tornado.options import options
 from tornado.process import cpu_count
@@ -452,8 +454,9 @@ class IndexHandler(MixinHandler, tornado.web.RequestHandler):
     def ssh_connect(self, args):
         ssh = self.ssh_client
         dst_addr = args[:2]
+        logging.error('+' * 100)
         logging.info('Connecting to {}:{}'.format(*dst_addr))
-
+        logging.error('+' * 100)
         try:
             ssh.connect(*args, timeout=options.timeout)
         except socket.error:
@@ -469,9 +472,10 @@ class IndexHandler(MixinHandler, tornado.web.RequestHandler):
         chan = ssh.invoke_shell(term=term)
         chan.setblocking(0)
         try:
-            sftp = ssh.open_sftp()
+            sftp = SCPClient(ssh.get_transport(), socket_timeout=15.0) # 部分sftp未启用，修改成scp
+
         except Exception as exc:
-            logging.error("sftp start error")
+            logging.error("scp error")
             sftp = None
         worker = Worker(self.loop, ssh, chan, dst_addr,sftp)
         worker.encoding = options.encoding if options.encoding else \
@@ -546,8 +550,9 @@ class filesendHandler(MixinHandler, tornado.web.RequestHandler):
 
 
     def initialize(self, loop):
-        logging.error("=" * 100)
-        logging.error(clients)
+        logging.info("=" * 100)
+        logging.info("文件上传--")
+
         super(filesendHandler, self).initialize(loop)
 
     def post(self):
@@ -561,8 +566,6 @@ class filesendHandler(MixinHandler, tornado.web.RequestHandler):
         tmpfiledir = "uploads/"+id
         if not os.path.exists(tmpfiledir):
             os.makedirs(tmpfiledir)
-        if worker == None:
-            self.finish({'error': 'sftp 异常'})
 
         try:
             for file in files:
@@ -572,6 +575,7 @@ class filesendHandler(MixinHandler, tornado.web.RequestHandler):
                     f.write(file['body'])
                     logging.warning(f"File {filename} is saved.")
                 worker.sftp.put(filepath, filename)
+
         except Exception as e:
             logging.error(e)
             self.finish({'error': e})

@@ -1,12 +1,28 @@
-## 相比于原版，增加了双重验证码
+# 说明
 
+
+## 使用方式 docker-compose启动
+
+
+```yaml
+git clone https://gitlab.inone.nsfocus.com/tp/public/webssh
+cd webssh
+docker-compose up -d
+```
+
+访问宿主机器的 ip:8000
+如果有需求，可以修改配置文件，修改docker-compose.yml的端口号，默认8000
+
+
+## 增加保存历史登录记录的功能（支持删除）
+![](https://wework.qpic.cn/wwpic3az/480577_96jSg0i5QZKIqFr_1718086305)
 
 ##  新增文件上传功能 2024-06-07
-文件最大100M 
 
+文件总和最大500M
 ![](https://wework.qpic.cn/wwpic3az/724267_7g-wP-SnSWG_aDE_1717741238)
 
-## 增加2次验证功能 
+## 相比于原版，增加了双重验证码
 保证ssh即使密码被破解也不会轻易被攻破
 
 [2AF相关资料](https://docs.github.com/zh/authentication/securing-your-account-with-two-factor-authentication-2fa/about-two-factor-authentication)
@@ -17,7 +33,7 @@ wssh --af2=随机字符串
 
 安装方式：
 ```bash
-pip install https://github.com/kaozb/wssh/releases/download/2af/webssh-1.6.2-py2.py3-none-any.whl
+pip install https://github.com/kaozb/wssh/releases/download/v6/webssh-1.6.2-py2.py3-none-any.whl
 ```
 
 登录时除了要求输入密码（基于时间的一次性密码），还要求输入6位数的验证码（验证码是根据字符串+时间计算而出） 不可逆。
