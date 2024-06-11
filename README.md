@@ -1,12 +1,28 @@
-## 相比于原版，增加了双重验证码
+# 说明
 
+
+## 使用方式 docker-compose启动
+
+
+```yaml
+git clone https://gitlab.inone.nsfocus.com/tp/public/webssh
+cd webssh
+docker-compose up -d
+```
+
+访问宿主机器的 ip:8000
+如果有需求，可以修改配置文件，修改docker-compose.yml的端口号，默认8000
+
+
+## 增加保存历史登录记录的功能（支持删除）
+![](https://wework.qpic.cn/wwpic3az/480577_96jSg0i5QZKIqFr_1718086305)
 
 ##  新增文件上传功能 2024-06-07
-文件最大100M 
 
+文件总和最大500M
 ![](https://wework.qpic.cn/wwpic3az/724267_7g-wP-SnSWG_aDE_1717741238)
 
-## 增加2次验证功能 
+## 相比于原版，增加了双重验证码
 保证ssh即使密码被破解也不会轻易被攻破
 
 [2AF相关资料](https://docs.github.com/zh/authentication/securing-your-account-with-two-factor-authentication-2fa/about-two-factor-authentication)
@@ -17,7 +33,7 @@ wssh --af2=随机字符串
 
 安装方式：
 ```bash
-pip install https://github.com/kaozb/wssh/releases/download/2af/webssh-1.6.2-py2.py3-none-any.whl
+pip install https://github.com/kaozb/wssh/releases/download/v6/webssh-1.6.2-py2.py3-none-any.whl
 ```
 
 登录时除了要求输入密码（基于时间的一次性密码），还要求输入6位数的验证码（验证码是根据字符串+时间计算而出） 不可逆。
@@ -31,21 +47,6 @@ pip install https://github.com/kaozb/wssh/releases/download/2af/webssh-1.6.2-py2
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/webssh.svg)
 ![PyPI](https://img.shields.io/pypi/v/webssh.svg)
 
-
-### Introduction
-
-A simple web application to be used as an ssh client to connect to your ssh servers. It is written in Python, base on tornado, paramiko and xterm.js.
-
-### Features
-
-* SSH password authentication supported, including empty password.
-* SSH public-key authentication supported, including DSA RSA ECDSA Ed25519 keys.
-* Encrypted keys supported.
-* Two-Factor Authentication (time-based one-time password) supported.
-* Fullscreen terminal supported.
-* Terminal window resizable.
-* Auto detect the ssh server's default encoding.
-* Modern browsers including Chrome, Firefox, Safari, Edge, Opera supported.
 
 
 ### Preview
@@ -175,35 +176,6 @@ Passing a terminal type
 http://localhost:8888/?term=xterm-256color
 ```
 
-### Use Docker
-
-Start up the app
-```
-docker-compose up
-```
-
-Tear down the app
-```
-docker-compose down
-```
-
-### Tests
-
-Requirements
-```
-pip install pytest pytest-cov codecov flake8 mock
-```
-
-Use unittest to run all tests
-```
-python -m unittest discover tests
-```
-
-Use pytest to run all tests
-```
-python -m pytest tests
-```
-
 ### Deployment
 
 Running behind an Nginx server
@@ -229,10 +201,3 @@ Running as a standalone server
 ```bash
 wssh --port=8080 --sslport=4433 --certfile='cert.crt' --keyfile='cert.key' --xheaders=False --policy=reject
 ```
-
-
-### Tips
-
-* For whatever deployment choice you choose, don't forget to enable SSL.
-* By default plain http requests from a public network will be either redirected or blocked and being redirected takes precedence over being blocked.
-* Try to use reject policy as the missing host key policy along with your verified known_hosts, this will prevent man-in-the-middle attacks. The idea is that it checks the system host keys file("~/.ssh/known_hosts") and the application host keys file("./known_hosts") in order, if the ssh server's hostname is not found or the key is not matched, the connection will be aborted.

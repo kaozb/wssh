@@ -7,7 +7,7 @@
     <link href="static/css/bootstrap.min.css" rel="stylesheet" type="text/css"/>
     <link href="static/css/xterm.min.css" rel="stylesheet" type="text/css"/>
     <link href="static/css/fullscreen.min.css" rel="stylesheet" type="text/css"/>
-    <link href="static/css/layui.css" rel="stylesheet">
+
     <style>
         .row {
             margin-top: 15px;
@@ -20,6 +20,17 @@
 
         .btn {
             margin-top: 15px;
+        }
+
+        .btnup {
+            margin-top: 15px;
+            color: yellow; /* 文字颜色 */
+            border: 2px solid green; /* 边框颜色和厚度 */
+            background-color: transparent; /* 透明背景 */
+            padding: 10px 20px; /* 内边距 */
+            font-size: 16px; /* 字体大小 */
+            cursor: pointer; /* 鼠标悬停时的光标样式 */
+            border-radius: 5px; /* 边框圆角 */
         }
 
         .btn-danger {
@@ -37,17 +48,30 @@
         }
 
         {% end %}
+
+        .account-item {
+            display: inline-block;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
     </style>
 </head>
 <body>
 
 <div id="waiter" class="layui-row" style="display: none;">
 
-    <div id="drop-area" class="btn btn-block layui-border-orange btn-lg "  style='z-index:256;position:fixed;width:10%;right:20px;' >拖入文件上传</div>
+    <div id="drop-area" class="btnup"
+         style='z-index:256;position:fixed;width:10%;right:20px;'>拖入文件上传<br>支持多文件
+    </div>
 
 </div>
-
-<div class="container form-container" style="display: none">
+<div style="float: left;width: 20%">
+    <h5>已保存的账户和密码：点击自动填充</h5>
+    <div id="accountList" class="account-item">
+    </div>
+</div>
+<div class="container form-container" style="display: none ;width: 80%">
     <form id="connect" action="" method="post" enctype="multipart/form-data"{% if debug %} novalidate{% end %}>
         <div class="row">
             <div class="col">
@@ -56,7 +80,7 @@
             </div>
             <div class="col">
                 <label for="Port">端口</label>
-                <input class="form-control" type="number" id="port" name="port" placeholder="22" value="" min=1
+                <input class="form-control" type="number" id="port" name="port" placeholder="22" value="22" min=1
                        max=65535>
             </div>
         </div>
@@ -69,40 +93,155 @@
                 <label for="Password">密码</label>
                 <input class="form-control" type="password" id="password" name="password" value="">
             </div>
+
         </div>
         <div class="row">
             <div class="col">
                 <label for="Username">密钥</label>
                 <input class="form-control" type="file" id="privatekey" name="privatekey" value="">
             </div>
-           <!-- <div class="col">
-                <label for="Passphrase">Passphrase</label>
-                <input class="form-control" type="password" id="passphrase" name="passphrase" value="">
-            </div>-->
-                        <div class="col">
-                <label for="Port">2af码</label>
-                <input class="form-control" type="number" id="af2" name="af2" placeholder="2AF" value="" min=000001
+            <div class="col">
+                <label for="Port">2FA码</label>
+                <input class="form-control" type="number" id="af2" name="af2" placeholder="2FA" value="" min=000001
                        max=999999>
             </div>
         </div>
 
         <input type="hidden" id="term" name="term" value="xterm-256color">
         {% module xsrf_form_html() %}
-        <button type="submit" class="btn btn-primary">登录</button>
         <button type="reset" class="btn btn-danger">清除</button>
+        <button type="submit" class="btn btn-primary" id="loginButton">登录</button>
     </form>
 </div>
 
+
+<div class="container">
+    <div class="content">
+        <div class="section">
+            <h4>
+                <a style="color: #1e9fff"
+                   href="https://help.aliyun.com/zh/idaas/security-authentication/product-overview/totp">什么是
+                    2FA？（类似一次一密）</a>
+            </h4>
+            <p>
+                2FA 代表“第二认证因素”。它是一种安全机制，用于为在线账户和敏感数据提供额外的保护层。通过要求除密码之外的第二种验证形式，2AF 有助于确保只有授权用户才能访问他们的账户。
+            </p>
+        </div>
+        <div class="section">
+            <h4>2FA 如何工作？</h4>
+            <p>
+                2FA 的过程通常包括两个步骤：
+            </p>
+            <ul>
+                <li>首先，用户像往常一样输入用户名和密码。</li>
+                <li>然后，用户需要提供第二种形式的认证，例如发送到其移动设备的代码、指纹扫描或硬件令牌。</li>
+            </ul>
+            <p>
+                通过这第二步，增加了一层额外的安全性，使攻击者更难获得未经授权的访问权限。
+            </p>
+        </div>
+    </div>
+</div>
 <div class="container">
     <div id="status" style="color: red;"></div>
     <div id="terminal"></div>
 </div>
-<script src="static/js/layui.js"></script>
+
 <script src="static/js/jquery.min.js"></script>
 <script src="static/js/popper.min.js"></script>
 <script src="static/js/bootstrap.min.js"></script>
 <script src="static/js/xterm.min.js"></script>
 <script src="static/js/xterm-addon-fit.min.js"></script>
 <script src="static/js/main.js"></script>
+<script>
+    window.addEventListener('beforeunload', function (e) {
+        var confirmationMessage = '您确定要离开此页面吗？';
+        e.returnValue = confirmationMessage;  // 现代浏览器会忽略这个属性，但仍需要存在
+        return confirmationMessage;           // 一些老浏览器使用这个返回值
+    });
+</script>
+
+
+<script>
+    // 页面加载时更新已保存的账户和密码列表
+    window.onload = function () {
+        updateAccountList();
+    };
+
+    // 监听登录按钮的点击事件
+    document.getElementById('loginButton').addEventListener('click', function () {
+        var hostname = document.getElementById('hostname').value;
+        var port = document.getElementById('port').value;
+        var username = document.getElementById('username').value;
+        var password = document.getElementById('password').value;
+
+        // 获取本地存储中已保存的账户和密码数组，如果不存在则初始化为空数组
+        var accounts = JSON.parse(localStorage.getItem('accounts')) || [];
+
+        // 检查是否已存在相同的账户，如果存在则不添加
+        var existingAccount = accounts.find(function (account) {
+            return account.hostname === hostname && account.port === port && account.username === username && account.password === password;
+        });
+
+        if (!existingAccount) {
+            // 将新的账户和密码添加到数组中
+            accounts.push({hostname: hostname, port: port, username: username, password: password});
+
+            // 将更新后的数组保存到本地存储中
+            localStorage.setItem('accounts', JSON.stringify(accounts));
+
+            // 更新已保存的账户和密码列表
+            updateAccountList();
+        } else {
+            console.log('该账户已存在，无需重复保存。');
+        }
+    });
+
+    // 更新已保存的账户和密码列表
+    function updateAccountList() {
+        var accountList = document.getElementById('accountList');
+        accountList.innerHTML = '';
+
+        // 获取本地存储中已保存的账户和密码数组
+        var accounts = JSON.parse(localStorage.getItem('accounts')) || [];
+
+        // 遍历数组，创建按钮、删除按钮和账户信息，并添加到列表中
+        accounts.forEach(function (account) {
+            var accountItem = document.createElement('div');
+            accountItem.className = 'account-item';
+
+            var button = document.createElement('button');
+            button.className = 'btn btn-secondary';
+            button.textContent = account.hostname + ' ● ' + account.port + ' ● ' + account.username;
+            button.addEventListener('click', function () {
+                document.getElementById('hostname').value = account.hostname;
+                document.getElementById('port').value = account.port;
+                document.getElementById('username').value = account.username;
+                document.getElementById('password').value = account.password;
+            });
+            accountItem.appendChild(button);
+
+            var closeButton = document.createElement('button');
+            closeButton.className = 'btn btn-danger btn-sm ml-2';
+            closeButton.textContent = '×';
+            closeButton.addEventListener('click', function () {
+                removeAccount(account);
+            });
+            accountList.appendChild(accountItem);
+            accountItem.appendChild(closeButton);
+        });
+    }
+
+    // 删除账户和密码
+    function removeAccount(account) {
+        var accounts = JSON.parse(localStorage.getItem('accounts')) || [];
+        var filteredAccounts = accounts.filter(function (item) {
+            return item.hostname !== account.hostname || item.port !== account.port || item.username !== account.username || item.password !== account.password;
+        });
+        localStorage.setItem('accounts', JSON.stringify(filteredAccounts));
+        updateAccountList();
+    }
+</script>
 </body>
 </html>
+
