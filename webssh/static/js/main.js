@@ -860,51 +860,298 @@ jQuery(function ($) {
 });
 
 
-var dropArea = document.getElementById('drop-area');
+// 文件管理器功能
+var fileManagerModal = document.getElementById('fileManagerModal');
+var fileManagerBtn = document.getElementById('file-manager-btn');
+var closeModal = document.querySelector('.close-modal');
+var currentPath = '.';
+var sessionId = '';
 
-dropArea.addEventListener('dragover', function (e) {
-    e.preventDefault();
-    dropArea.style.border = '2px solid #ccc';
-});
-
-dropArea.addEventListener('dragleave', function (e) {
-    e.preventDefault();
-    dropArea.style.border = '2px dashed #ccc';
-});
-
-dropArea.addEventListener('drop', function (e) {
-    e.preventDefault();
-
-    dropArea.style.border = '2px dashed #ccc';
-    dropArea.innerHTML = '<i class="fas fa-2x fa-sync fa-spin">文件上传中。。。确保文件小于500M</i>';
-    var files = e.dataTransfer.files;
-    var statusDiv = document.getElementById('status').className
-    if (files.length > 0) {
-        var formData = new FormData();
-
-        // 将所有文件添加到 FormData 对象中
-        for (var i = 0; i < files.length; i++) {
-            formData.append('files', files[i]);
-        }
-        formData.append('id', statusDiv)
-        var xhr = new XMLHttpRequest();
-        xhr.open('POST', '/filesend', true); // 修改上传文件的 URL
-
-        xhr.onload = function () {
-            if (xhr.status === 200) {
-                var response = JSON.parse(xhr.responseText);
-                if (response.success) {
-                    dropArea.innerHTML = "上传成功";
-                } else if (response.error) {
-                    dropArea.innerHTML = response.error;
-                } else {
-                    dropArea.innerHTML = "上传失败";
-                }
-            } else {
-                dropArea.innerHTML = "上传失败";
-            }
-            dropArea.innerHTML = "上传结束;拖入文件继续上传";
-        };
-        xhr.send(formData);
+// 打开文件管理器
+fileManagerBtn.onclick = function() {
+    sessionId = document.getElementById('status').className;
+    if (!sessionId) {
+        alert('请先连接SSH');
+        return;
     }
+    fileManagerModal.style.display = 'block';
+    loadFileList(currentPath);
+};
+
+// 关闭文件管理器
+closeModal.onclick = function() {
+    fileManagerModal.style.display = 'none';
+};
+
+window.onclick = function(event) {
+    if (event.target == fileManagerModal) {
+        fileManagerModal.style.display = 'none';
+    }
+};
+
+// 加载文件列表
+function loadFileList(path) {
+    var fileListContainer = document.getElementById('fileListContainer');
+    fileListContainer.innerHTML = '<div class="loading">加载中...</div>';
+    
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/filelist', true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            var response = JSON.parse(xhr.responseText);
+            if (response.error) {
+                fileListContainer.innerHTML = '<div class="loading" style="color: #e74c3c;">错误: ' + response.error + '</div>';
+                return;
+            }
+            
+            currentPath = response.current_path;
+            document.getElementById('currentPath').textContent = currentPath;
+            
+            if (response.files.length === 0) {
+                fileListContainer.innerHTML = '<div class="loading">目录为空</div>';
+                return;
+            }
+            
+            var html = '';
+            response.files.forEach(function(file) {
+                var icon = file.is_dir ? '📁' : '📄';
+                var fileItemClass = file.is_dir ? 'file-item dir-item' : 'file-item';
+                
+                html += '<div class="' + fileItemClass + '" data-name="' + file.name + '" data-is-dir="' + file.is_dir + '">';
+                html += '  <div class="file-info">';
+                html += '    <span class="file-icon">' + icon + '</span>';
+                html += '    <span class="file-name">' + file.name + '</span>';
+                html += '  </div>';
+                html += '  <span class="file-size">' + file.size + '</span>';
+                
+                if (!file.is_dir) {
+                    html += '  <div class="file-actions">';
+                    html += '    <button onclick="downloadFile(\'' + file.name + '\')">下载</button>';
+                    html += '  </div>';
+                } else {
+                    html += '  <div class="file-actions">';
+                    html += '    <button onclick="enterDirectory(\'' + file.name + '\')">进入</button>';
+                    html += '  </div>';
+                }
+                
+                html += '</div>';
+            });
+            
+            fileListContainer.innerHTML = html;
+        } else {
+            fileListContainer.innerHTML = '<div class="loading" style="color: #e74c3c;">加载失败</div>';
+        }
+    };
+    
+    var data = 'id=' + encodeURIComponent(sessionId) + '&path=' + encodeURIComponent(path);
+    xhr.send(data);
+}
+
+// 进入目录
+function enterDirectory(dirName) {
+    var newPath = currentPath;
+    if (currentPath.endsWith('/')) {
+        newPath = currentPath + dirName;
+    } else {
+        newPath = currentPath + '/' + dirName;
+    }
+    loadFileList(newPath);
+}
+
+// 返回上级目录
+document.getElementById('parentDirBtn').onclick = function() {
+    if (currentPath === '.' || currentPath === '~') {
+        loadFileList('.');
+        return;
+    }
+    
+    var parentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+    if (!parentPath) {
+        parentPath = '/';
+    }
+    loadFileList(parentPath);
+};
+
+// 刷新文件列表
+document.getElementById('refreshBtn').onclick = function() {
+    loadFileList(currentPath);
+};
+
+// 下载文件
+function downloadFile(fileName) {
+    var remotePath = currentPath;
+    if (!remotePath.endsWith('/')) {
+        remotePath += '/';
+    }
+    remotePath += fileName;
+    
+    // 显示下载提示
+    var fileListContainer = document.getElementById('fileListContainer');
+    var originalContent = fileListContainer.innerHTML;
+    fileListContainer.innerHTML = '<div class="loading" style="color: #3498db;">正在下载 ' + fileName + '...</div>' + originalContent;
+    
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/filedownload', true);
+    xhr.responseType = 'blob'; // 重要：设置响应类型为blob
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    
+    xhr.onload = function() {
+        // 移除下载提示
+        fileListContainer.innerHTML = originalContent;
+        
+        if (xhr.status === 200) {
+            // 检查响应是否为JSON错误消息
+            var contentType = xhr.getResponseHeader('Content-Type');
+            if (contentType && contentType.indexOf('application/json') !== -1) {
+                // 是JSON错误响应
+                var reader = new FileReader();
+                reader.onload = function() {
+                    var response = JSON.parse(reader.result);
+                    alert('下载失败: ' + (response.error || '未知错误'));
+                };
+                reader.readAsText(xhr.response);
+                return;
+            }
+            
+            // 创建一个临时URL
+            var blob = xhr.response;
+            var url = window.URL.createObjectURL(blob);
+            
+            // 创建一个隐藏的a标签并触发下载
+            var a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            
+            // 清理
+            setTimeout(function() {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 100);
+        } else {
+            alert('下载失败，请重试');
+        }
+    };
+    
+    xhr.onerror = function() {
+        fileListContainer.innerHTML = originalContent;
+        alert('下载失败，请检查网络连接');
+    };
+    
+    var data = 'id=' + encodeURIComponent(sessionId) + '&remote_path=' + encodeURIComponent(remotePath);
+    xhr.send(data);
+}
+
+// 上传文件
+document.getElementById('uploadFileBtn').onclick = function() {
+    document.getElementById('fileInput').click();
+};
+
+document.getElementById('fileInput').onchange = function(e) {
+    uploadFiles(e.target.files);
+};
+
+// 上传文件夹
+document.getElementById('uploadFolderBtn').onclick = function() {
+    document.getElementById('folderInput').click();
+};
+
+document.getElementById('folderInput').onchange = function(e) {
+    uploadFiles(e.target.files);
+};
+
+// 上传文件函数
+function uploadFiles(files) {
+    if (files.length === 0) return;
+    
+    var uploadArea = document.getElementById('uploadArea');
+    uploadArea.innerHTML = '<p style="color: #3498db;">⏳ 上传中... 0/' + files.length + '</p>';
+    
+    var formData = new FormData();
+    for (var i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+    }
+    formData.append('id', sessionId);
+    formData.append('remote_path', currentPath);
+    
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/filesend', true);
+    
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            var percentComplete = (e.loaded / e.total) * 100;
+            uploadArea.innerHTML = '<p style="color: #3498db;">⏳ 上传中... ' + Math.round(percentComplete) + '%</p>';
+        }
+    };
+    
+    xhr.onload = function() {
+        if (xhr.status === 200) {
+            var response = JSON.parse(xhr.responseText);
+            if (response.success) {
+                uploadArea.innerHTML = '<p style="color: #2ecc71;">✅ 上传成功!</p>';
+                setTimeout(function() {
+                    uploadArea.innerHTML = '<p>📤 拖拽文件到此处上传，或点击上方按钮选择文件</p><p style="color: #95a5a6; font-size: 12px;">支持多文件同时上传</p>';
+                    loadFileList(currentPath);
+                }, 2000);
+            } else {
+                uploadArea.innerHTML = '<p style="color: #e74c3c;">❌ 上传失败: ' + (response.error || '未知错误') + '</p>';
+                setTimeout(function() {
+                    uploadArea.innerHTML = '<p>📤 拖拽文件到此处上传，或点击上方按钮选择文件</p><p style="color: #95a5a6; font-size: 12px;">支持多文件同时上传</p>';
+                }, 3000);
+            }
+        } else {
+            uploadArea.innerHTML = '<p style="color: #e74c3c;">❌ 上传失败</p>';
+            setTimeout(function() {
+                uploadArea.innerHTML = '<p>📤 拖拽文件到此处上传，或点击上方按钮选择文件</p><p style="color: #95a5a6; font-size: 12px;">支持多文件同时上传</p>';
+            }, 3000);
+        }
+    };
+    
+    xhr.onerror = function() {
+        uploadArea.innerHTML = '<p style="color: #e74c3c;">❌ 上传失败</p>';
+        setTimeout(function() {
+            uploadArea.innerHTML = '<p>📤 拖拽文件到此处上传，或点击上方按钮选择文件</p><p style="color: #95a5a6; font-size: 12px;">支持多文件同时上传</p>';
+        }, 3000);
+    };
+    
+    xhr.send(formData);
+    
+    // 清空文件选择
+    document.getElementById('fileInput').value = '';
+    document.getElementById('folderInput').value = '';
+}
+
+// 拖拽上传
+var uploadArea = document.getElementById('uploadArea');
+
+uploadArea.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadArea.classList.add('drag-over');
+});
+
+uploadArea.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadArea.classList.remove('drag-over');
+});
+
+uploadArea.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    uploadArea.classList.remove('drag-over');
+    
+    var files = e.dataTransfer.files;
+    if (files.length > 0) {
+        uploadFiles(files);
+    }
+});
+
+// 点击上传区域选择文件
+uploadArea.addEventListener('click', function() {
+    document.getElementById('fileInput').click();
 });

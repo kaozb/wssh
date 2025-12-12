@@ -9,6 +9,7 @@ import traceback
 import weakref
 import paramiko
 import tornado.web
+import tornado.escape
 import pyotp
 from concurrent.futures import ThreadPoolExecutor
 
@@ -558,6 +559,7 @@ class filesendHandler(MixinHandler, tornado.web.RequestHandler):
     def post(self):
         id = self.get_value('id')
         files = self.request.files['files']
+        remote_path = self.get_argument('remote_path', '.')
 
 
         self.src_addr = self.get_client_addr()
@@ -574,13 +576,170 @@ class filesendHandler(MixinHandler, tornado.web.RequestHandler):
                 with open(filepath, 'wb') as f:
                     f.write(file['body'])
                     logging.warning(f"File {filename} is saved.")
-                worker.sftp.put(filepath, filename)
+                
+                # 支持相对路径和文件夹路径
+                remote_file_path = os.path.join(remote_path, filename).replace('\\', '/')
+                worker.sftp.put(filepath, remote_file_path)
 
         except Exception as e:
             logging.error(e)
-            self.finish({'error': e})
+            self.finish({'error': str(e)})
+            return
         shutil.rmtree(tmpfiledir)
         self.finish({'success': 'ok'})
+
+
+class FileListHandler(MixinHandler, tornado.web.RequestHandler):
+    """列出远程目录文件"""
+    
+    def initialize(self, loop):
+        super(FileListHandler, self).initialize(loop)
+    
+    def post(self):
+        try:
+            id = self.get_value('id')
+            path = self.get_argument('path', '.')
+            
+            self.src_addr = self.get_client_addr()
+            workers = clients.get(self.src_addr[0])
+            if not workers:
+                self.finish({'error': '未找到连接'})
+                return
+                
+            worker = workers.get(id)
+            if not worker:
+                self.finish({'error': '未找到工作进程'})
+                return
+            
+            # 使用SSH执行ls命令获取文件列表
+            ssh = worker.ssh
+            
+            # 先获取当前工作目录
+            if path == '.':
+                stdin, stdout, stderr = ssh.exec_command('pwd')
+                current_path = stdout.read().decode('utf-8').strip()
+            else:
+                current_path = path
+            
+            # 获取文件列表 (使用ls -la获取详细信息)
+            cmd = f'ls -lah "{current_path}"'
+            stdin, stdout, stderr = ssh.exec_command(cmd)
+            output = stdout.read().decode('utf-8')
+            error = stderr.read().decode('utf-8')
+            
+            if error and 'No such file' in error:
+                self.finish({'error': '目录不存在'})
+                return
+            
+            files = []
+            lines = output.strip().split('\n')[1:]  # 跳过第一行总计
+            
+            for line in lines:
+                if not line.strip():
+                    continue
+                parts = line.split(maxsplit=8)
+                if len(parts) < 9:
+                    continue
+                
+                permissions = parts[0]
+                size = parts[4]
+                name = parts[8]
+                
+                if name in ['.', '..']:
+                    continue
+                
+                is_dir = permissions.startswith('d')
+                is_link = permissions.startswith('l')
+                
+                files.append({
+                    'name': name,
+                    'size': size if not is_dir else '-',
+                    'is_dir': is_dir,
+                    'is_link': is_link,
+                    'permissions': permissions
+                })
+            
+            self.finish({
+                'success': True,
+                'files': files,
+                'current_path': current_path
+            })
+            
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            self.finish({'error': str(e)})
+
+
+class FileDownloadHandler(MixinHandler, tornado.web.RequestHandler):
+    """下载远程文件"""
+    
+    def initialize(self, loop):
+        super(FileDownloadHandler, self).initialize(loop)
+    
+    def post(self):
+        try:
+            id = self.get_value('id')
+            remote_path = self.get_value('remote_path')
+            
+            self.src_addr = self.get_client_addr()
+            workers = clients.get(self.src_addr[0])
+            if not workers:
+                self.set_header('Content-Type', 'application/json')
+                self.finish(json.dumps({'error': '未找到连接'}))
+                return
+                
+            worker = workers.get(id)
+            if not worker:
+                self.set_header('Content-Type', 'application/json')
+                self.finish(json.dumps({'error': '未找到工作进程'}))
+                return
+            
+            # 创建临时目录
+            tmpfiledir = "downloads/" + id
+            if not os.path.exists(tmpfiledir):
+                os.makedirs(tmpfiledir)
+            
+            filename = os.path.basename(remote_path)
+            local_path = os.path.join(tmpfiledir, filename)
+            
+            # 使用SCP下载文件
+            worker.sftp.get(remote_path, local_path)
+            
+            # 读取文件内容
+            with open(local_path, 'rb') as f:
+                file_content = f.read()
+            
+            # 清理临时文件
+            try:
+                os.remove(local_path)
+                if not os.listdir(tmpfiledir):
+                    os.rmdir(tmpfiledir)
+            except:
+                pass
+            
+            # 设置响应头，使用安全的文件名编码
+            self.set_header('Content-Type', 'application/octet-stream')
+            # 使用 RFC 5987 编码文件名以支持中文等特殊字符
+            encoded_filename = filename.encode('utf-8')
+            self.set_header('Content-Disposition', 
+                          'attachment; filename*=UTF-8\'\'{}'.format(
+                              tornado.escape.url_escape(filename, plus=False)))
+            self.set_header('Content-Length', str(len(file_content)))
+            self.write(file_content)
+            self.finish()
+            
+        except Exception as e:
+            logging.error(traceback.format_exc())
+            # 清理可能遗留的临时文件
+            try:
+                if 'local_path' in locals() and os.path.exists(local_path):
+                    os.remove(local_path)
+                if 'tmpfiledir' in locals() and os.path.exists(tmpfiledir) and not os.listdir(tmpfiledir):
+                    os.rmdir(tmpfiledir)
+            except:
+                pass
+            self.set_header('Content-Type', 'application/json')
+            self.finish(json.dumps({'error': str(e)}))
 
 
 class WsockHandler(MixinHandler, tornado.websocket.WebSocketHandler):

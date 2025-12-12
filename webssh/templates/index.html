@@ -50,9 +50,200 @@
         {% end %}
 
         .account-item {
-            display: inline-block;
-            margin-right: 10px;
+            display: block;
             margin-bottom: 10px;
+        }
+
+        .account-item .btn {
+            margin-top: 0;
+            word-break: break-all;
+            white-space: normal;
+            text-align: left;
+        }
+
+        /* 文件管理器样式 */
+        .file-manager-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+
+        .file-manager-content {
+            background-color: #2c3e50;
+            margin: 2% auto;
+            padding: 20px;
+            border: 1px solid #34495e;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 1200px;
+            color: #ecf0f1;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+
+        .file-manager-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #34495e;
+        }
+
+        .file-manager-header h2 {
+            margin: 0;
+            color: #3498db;
+        }
+
+        .close-modal {
+            color: #e74c3c;
+            font-size: 32px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close-modal:hover {
+            color: #c0392b;
+        }
+
+        .file-manager-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .file-manager-actions button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .file-manager-actions button:hover {
+            background-color: #2980b9;
+        }
+
+        .file-manager-actions button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .current-path {
+            background-color: #34495e;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-family: monospace;
+            color: #2ecc71;
+        }
+
+        .file-list {
+            background-color: #34495e;
+            border-radius: 5px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #2c3e50;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .file-item:hover {
+            background-color: #3d566e;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .file-icon {
+            font-size: 20px;
+        }
+
+        .file-name {
+            font-weight: 500;
+        }
+
+        .file-size {
+            color: #95a5a6;
+            font-size: 12px;
+            margin-left: auto;
+            margin-right: 15px;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .file-actions button {
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            padding: 5px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .file-actions button:hover {
+            background-color: #229954;
+        }
+
+        .upload-area {
+            border: 2px dashed #3498db;
+            border-radius: 5px;
+            padding: 30px;
+            text-align: center;
+            margin-top: 20px;
+            background-color: #34495e;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #2ecc71;
+            background-color: #3d566e;
+        }
+
+        .upload-area.drag-over {
+            border-color: #2ecc71;
+            background-color: #3d566e;
+        }
+
+        #fileInput, #folderInput {
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #3498db;
         }
 
     </style>
@@ -61,57 +252,94 @@
 
 <div id="waiter" class="layui-row" style="display: none;">
 
-    <div id="drop-area" class="btnup"
-         style='z-index:256;position:fixed;width:10%;right:20px;'>拖入文件上传<br>支持多文件
-    </div>
+    <button id="file-manager-btn" class="btnup"
+         style='z-index:256;position:fixed;width:10%;right:20px;'>文件管理器
+    </button>
 
 </div>
-<div style="float: left;width: 20%">
-    <h5>已保存的账户和密码：点击自动填充</h5>
-    <div id="accountList" class="account-item">
+
+<!-- 文件管理器弹窗 -->
+<div id="fileManagerModal" class="file-manager-modal">
+    <div class="file-manager-content">
+        <div class="file-manager-header">
+            <h2>📁 文件管理器</h2>
+            <span class="close-modal">&times;</span>
+        </div>
+        
+        <div class="file-manager-actions">
+            <button id="refreshBtn">🔄 刷新</button>
+            <button id="uploadFileBtn">📄 上传文件</button>
+            <button id="uploadFolderBtn">📁 上传文件夹</button>
+            <button id="parentDirBtn">⬆️ 上级目录</button>
+        </div>
+
+        <div class="current-path">
+            当前路径: <span id="currentPath">~</span>
+        </div>
+
+        <div id="fileListContainer" class="file-list">
+            <div class="loading">加载中...</div>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <p>📤 拖拽文件到此处上传，或点击上方按钮选择文件</p>
+            <p style="color: #95a5a6; font-size: 12px;">支持多文件同时上传</p>
+        </div>
+
+        <input type="file" id="fileInput" multiple>
+        <input type="file" id="folderInput" webkitdirectory directory multiple>
     </div>
 </div>
-<div class="container form-container" style="display: none ;width: 80%">
-    <form id="connect" action="" method="post" enctype="multipart/form-data"{% if debug %} novalidate{% end %}>
-        <div class="row">
-            <div class="col">
-                <label for="Hostname">IP</label>
-                <input class="form-control" type="text" id="hostname" name="hostname" value="" required>
-            </div>
-            <div class="col">
-                <label for="Port">端口</label>
-                <input class="form-control" type="number" id="port" name="port" placeholder="22" value="22" min=1
-                       max=65535>
+<div class="container">
+    <div class="row">
+        <div class="col-md-3">
+            <h5>已保存的账户和密码：点击自动填充</h5>
+            <div id="accountList" class="account-item">
             </div>
         </div>
-        <div class="row">
-            <div class="col">
-                <label for="Username">账户</label>
-                <input class="form-control" type="text" id="username" name="username" value="" required>
-            </div>
-            <div class="col">
-                <label for="Password">密码</label>
-                <input class="form-control" type="password" id="password" name="password" value="">
-            </div>
+        <div class="col-md-9 form-container" style="display: none">
+            <form id="connect" action="" method="post" enctype="multipart/form-data"{% if debug %} novalidate{% end %}>
+                <div class="row">
+                    <div class="col">
+                        <label for="hostname">IP</label>
+                        <input class="form-control" type="text" id="hostname" name="hostname" value="" required>
+                    </div>
+                    <div class="col">
+                        <label for="port">端口</label>
+                        <input class="form-control" type="number" id="port" name="port" placeholder="22" value="22" min=1
+                               max=65535>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <label for="username">账户</label>
+                        <input class="form-control" type="text" id="username" name="username" value="" required>
+                    </div>
+                    <div class="col">
+                        <label for="password">密码</label>
+                        <input class="form-control" type="password" id="password" name="password" value="">
+                    </div>
 
-        </div>
-        <div class="row">
-            <div class="col">
-                <label for="Username">密钥</label>
-                <input class="form-control" type="file" id="privatekey" name="privatekey" value="">
-            </div>
-            <div class="col">
-                <label for="Port">2FA码</label>
-                <input class="form-control" type="number" id="af2" name="af2" placeholder="2FA" value="" min=000001
-                       max=999999>
-            </div>
-        </div>
+                </div>
+                <div class="row">
+                    <div class="col">
+                        <label for="privatekey">密钥</label>
+                        <input class="form-control" type="file" id="privatekey" name="privatekey" value="">
+                    </div>
+                    <div class="col">
+                        <label for="af2">2FA码</label>
+                        <input class="form-control" type="number" id="af2" name="af2" placeholder="2FA" value="" min=000001
+                               max=999999>
+                    </div>
+                </div>
 
-        <input type="hidden" id="term" name="term" value="xterm-256color">
-        {% module xsrf_form_html() %}
-        <button type="reset" class="btn btn-danger">清除</button>
-        <button type="submit" class="btn btn-primary" id="loginButton">登录</button>
-    </form>
+                <input type="hidden" id="term" name="term" value="xterm-256color">
+                {% module xsrf_form_html() %}
+                <button type="reset" class="btn btn-danger">清除</button>
+                <button type="submit" class="btn btn-primary" id="loginButton">登录</button>
+            </form>
+        </div>
+    </div>
 </div>
 
 
