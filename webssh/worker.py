@@ -12,26 +12,10 @@ from tornado.util import errno_from_exception
 
 
 BUF_SIZE = 32 * 1024
-clients = {}  # {ip: {id: worker}}
 
-
-def clear_worker(worker, clients):
-    ip = worker.src_addr[0]
-    workers = clients.get(ip)
-    assert worker.id in workers
-    workers.pop(worker.id)
-
-    if not workers:
-        clients.pop(ip)
-        if not clients:
-            clients.clear()
-
-
-def recycle_worker(worker):
-    if worker.handler:
-        return
-    logging.warning('Recycling worker {}'.format(worker.id))
-    worker.close(reason='worker recycled')
+# 兼容导出：clients 仍是同一份进程内全局字典，实际存放在 webssh.clients。
+# 查找 / 登记 / 收尾一律走 webssh.clients 的接口，这里只为历史引用保留别名。
+from webssh.clients import clients, clear_worker, recycle as recycle_worker  # noqa: E402
 
 
 class Worker(object):
@@ -132,5 +116,5 @@ class Worker(object):
         self.ssh.close()
         logging.info('Connection to {}:{} lost'.format(*self.dst_addr))
 
-        clear_worker(self, clients)
+        clear_worker(self)
         logging.debug(clients)

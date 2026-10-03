@@ -2,7 +2,6 @@ import io
 import json
 import logging
 import os
-import shutil
 import socket
 import struct
 import traceback
@@ -22,7 +21,11 @@ from webssh.utils import (
     to_int, to_ip_address, UnicodeType, is_ip_hostname, is_same_primary_domain,
     is_valid_encoding
 )
-from webssh.worker import Worker, recycle_worker, clients
+from webssh.worker import Worker
+from webssh.clients import (
+    SessionNotFound, add_workers, register, get_worker, recycle, clients,
+)
+from webssh.fileservice import RemoteFileService
 
 try:
     from json.decoder import JSONDecodeError
@@ -537,11 +540,9 @@ class IndexHandler(MixinHandler, tornado.web.RequestHandler):
             logging.error(traceback.format_exc())
             self.result.update(status=str(exc))
         else:
-            if not workers:
-                clients[ip] = workers
             worker.src_addr = (ip, port)
-            workers[worker.id] = worker
-            self.loop.call_later(options.delay, recycle_worker, worker)
+            register(ip, worker)
+            self.loop.call_later(options.delay, recycle, worker)
             self.result.update(id=worker.id, encoding=worker.encoding)
 
         self.write(self.result)
@@ -561,31 +562,22 @@ class filesendHandler(MixinHandler, tornado.web.RequestHandler):
         files = self.request.files['files']
         remote_path = self.get_argument('remote_path', '.')
 
-
         self.src_addr = self.get_client_addr()
-        workers = clients.get(self.src_addr[0])
-        worker = workers.get(id)
-        tmpfiledir = "uploads/"+id
-        if not os.path.exists(tmpfiledir):
-            os.makedirs(tmpfiledir)
+        try:
+            worker = get_worker(self.src_addr, id)
+        except SessionNotFound as exc:
+            self.finish({'error': str(exc)})
+            return
 
+        service = RemoteFileService(worker)
         try:
             for file in files:
-                filename = file['filename']
-                filepath = os.path.join(tmpfiledir, filename)
-                with open(filepath, 'wb') as f:
-                    f.write(file['body'])
-                    logging.warning(f"File {filename} is saved.")
-                
                 # 支持相对路径和文件夹路径
-                remote_file_path = os.path.join(remote_path, filename).replace('\\', '/')
-                worker.sftp.put(filepath, remote_file_path)
-
+                service.put(file['filename'], file['body'], remote_path)
         except Exception as e:
             logging.error(e)
             self.finish({'error': str(e)})
             return
-        shutil.rmtree(tmpfiledir)
         self.finish({'success': 'ok'})
 
 
@@ -599,72 +591,21 @@ class FileListHandler(MixinHandler, tornado.web.RequestHandler):
         try:
             id = self.get_value('id')
             path = self.get_argument('path', '.')
-            
+
             self.src_addr = self.get_client_addr()
-            workers = clients.get(self.src_addr[0])
-            if not workers:
-                self.finish({'error': '未找到连接'})
+            try:
+                worker = get_worker(self.src_addr, id)
+            except SessionNotFound as exc:
+                self.finish({'error': str(exc)})
                 return
-                
-            worker = workers.get(id)
-            if not worker:
-                self.finish({'error': '未找到工作进程'})
-                return
-            
-            # 使用SSH执行ls命令获取文件列表
-            ssh = worker.ssh
-            
-            # 先获取当前工作目录
-            if path == '.':
-                stdin, stdout, stderr = ssh.exec_command('pwd')
-                current_path = stdout.read().decode('utf-8').strip()
-            else:
-                current_path = path
-            
-            # 获取文件列表 (使用ls -la获取详细信息)
-            cmd = f'ls -lah "{current_path}"'
-            stdin, stdout, stderr = ssh.exec_command(cmd)
-            output = stdout.read().decode('utf-8')
-            error = stderr.read().decode('utf-8')
-            
-            if error and 'No such file' in error:
-                self.finish({'error': '目录不存在'})
-                return
-            
-            files = []
-            lines = output.strip().split('\n')[1:]  # 跳过第一行总计
-            
-            for line in lines:
-                if not line.strip():
-                    continue
-                parts = line.split(maxsplit=8)
-                if len(parts) < 9:
-                    continue
-                
-                permissions = parts[0]
-                size = parts[4]
-                name = parts[8]
-                
-                if name in ['.', '..']:
-                    continue
-                
-                is_dir = permissions.startswith('d')
-                is_link = permissions.startswith('l')
-                
-                files.append({
-                    'name': name,
-                    'size': size if not is_dir else '-',
-                    'is_dir': is_dir,
-                    'is_link': is_link,
-                    'permissions': permissions
-                })
-            
+
+            result = RemoteFileService(worker).list_dir(path)
             self.finish({
                 'success': True,
-                'files': files,
-                'current_path': current_path
+                'files': result['entries'],
+                'current_path': result['current_path'],
             })
-            
+
         except Exception as e:
             logging.error(traceback.format_exc())
             self.finish({'error': str(e)})
@@ -680,64 +621,29 @@ class FileDownloadHandler(MixinHandler, tornado.web.RequestHandler):
         try:
             id = self.get_value('id')
             remote_path = self.get_value('remote_path')
-            
+
             self.src_addr = self.get_client_addr()
-            workers = clients.get(self.src_addr[0])
-            if not workers:
-                self.set_header('Content-Type', 'application/json')
-                self.finish(json.dumps({'error': '未找到连接'}))
-                return
-                
-            worker = workers.get(id)
-            if not worker:
-                self.set_header('Content-Type', 'application/json')
-                self.finish(json.dumps({'error': '未找到工作进程'}))
-                return
-            
-            # 创建临时目录
-            tmpfiledir = "downloads/" + id
-            if not os.path.exists(tmpfiledir):
-                os.makedirs(tmpfiledir)
-            
-            filename = os.path.basename(remote_path)
-            local_path = os.path.join(tmpfiledir, filename)
-            
-            # 使用SCP下载文件
-            worker.sftp.get(remote_path, local_path)
-            
-            # 读取文件内容
-            with open(local_path, 'rb') as f:
-                file_content = f.read()
-            
-            # 清理临时文件
             try:
-                os.remove(local_path)
-                if not os.listdir(tmpfiledir):
-                    os.rmdir(tmpfiledir)
-            except:
-                pass
-            
+                worker = get_worker(self.src_addr, id)
+            except SessionNotFound as exc:
+                self.set_header('Content-Type', 'application/json')
+                self.finish(json.dumps({'error': str(exc)}))
+                return
+
+            filename, file_content = RemoteFileService(worker).get(remote_path)
+
             # 设置响应头，使用安全的文件名编码
             self.set_header('Content-Type', 'application/octet-stream')
             # 使用 RFC 5987 编码文件名以支持中文等特殊字符
-            encoded_filename = filename.encode('utf-8')
-            self.set_header('Content-Disposition', 
+            self.set_header('Content-Disposition',
                           'attachment; filename*=UTF-8\'\'{}'.format(
                               tornado.escape.url_escape(filename, plus=False)))
             self.set_header('Content-Length', str(len(file_content)))
             self.write(file_content)
             self.finish()
-            
+
         except Exception as e:
             logging.error(traceback.format_exc())
-            # 清理可能遗留的临时文件
-            try:
-                if 'local_path' in locals() and os.path.exists(local_path):
-                    os.remove(local_path)
-                if 'tmpfiledir' in locals() and os.path.exists(tmpfiledir) and not os.listdir(tmpfiledir):
-                    os.rmdir(tmpfiledir)
-            except:
-                pass
             self.set_header('Content-Type', 'application/json')
             self.finish(json.dumps({'error': str(e)}))
 
@@ -762,15 +668,16 @@ class WsockHandler(MixinHandler, tornado.websocket.WebSocketHandler):
         except (tornado.web.MissingArgumentError, InvalidValueError) as exc:
             self.close(reason=str(exc))
         else:
-            worker = workers.get(worker_id)
-            if worker:
+            try:
+                worker = get_worker(self.src_addr, worker_id)
+            except SessionNotFound:
+                self.close(reason='Websocket authentication failed.')
+            else:
                 # workers[worker_id] = None
                 self.set_nodelay(True)
                 worker.set_handler(self)
                 self.worker_ref = weakref.ref(worker)
                 self.loop.add_handler(worker.fd, worker, IOLoop.READ)
-            else:
-                self.close(reason='Websocket authentication failed.')
 
     def on_message(self, message):
         logging.debug('{!r} from {}:{}'.format(message, *self.src_addr))

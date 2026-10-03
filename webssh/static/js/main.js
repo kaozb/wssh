@@ -3,6 +3,16 @@
 var jQuery;
 var wssh = {};
 
+// sessionStore：会话 id 的唯一权威。写 id 与读 id 都只认它，
+// DOM class 退回纯样式。定义置于顶部，保证登录回调调用 set 时已就绪。
+var sessionStore = (function () {
+    var id = '';
+    return {
+        set: function (value) { id = value || ''; },
+        get: function () { return id; }
+    };
+})();
+
 
 (function () {
     // For FormData without getter and setter
@@ -359,6 +369,9 @@ jQuery(function ($) {
         }
         waiter.show();
         var statusDiv = document.getElementById('status');
+        // sessionStore 是会话 id 的唯一权威；DOM class 退回纯样式，
+        // 这里仍保留写 class 以兼容既有样式/调试习惯（见 AGENTS.md）。
+        sessionStore.set(msg.id);
         statusDiv.className = msg.id;
         var ws_url = window.location.href.split(/\?|#/, 1)[0].replace('http', 'ws'),
             join = (ws_url[ws_url.length - 1] === '/' ? '' : '/'),
@@ -865,12 +878,10 @@ var fileManagerModal = document.getElementById('fileManagerModal');
 var fileManagerBtn = document.getElementById('file-manager-btn');
 var closeModal = document.querySelector('.close-modal');
 var currentPath = '.';
-var sessionId = '';
 
 // 打开文件管理器
 fileManagerBtn.onclick = function() {
-    sessionId = document.getElementById('status').className;
-    if (!sessionId) {
+    if (!sessionStore.get()) {
         alert('请先连接SSH');
         return;
     }
@@ -945,7 +956,7 @@ function loadFileList(path) {
         }
     };
     
-    var data = 'id=' + encodeURIComponent(sessionId) + '&path=' + encodeURIComponent(path);
+    var data = 'id=' + encodeURIComponent(sessionStore.get()) + '&path=' + encodeURIComponent(path);
     xhr.send(data);
 }
 
@@ -1042,7 +1053,7 @@ function downloadFile(fileName) {
         alert('下载失败，请检查网络连接');
     };
     
-    var data = 'id=' + encodeURIComponent(sessionId) + '&remote_path=' + encodeURIComponent(remotePath);
+    var data = 'id=' + encodeURIComponent(sessionStore.get()) + '&remote_path=' + encodeURIComponent(remotePath);
     xhr.send(data);
 }
 
@@ -1075,7 +1086,7 @@ function uploadFiles(files) {
     for (var i = 0; i < files.length; i++) {
         formData.append('files', files[i]);
     }
-    formData.append('id', sessionId);
+    formData.append('id', sessionStore.get());
     formData.append('remote_path', currentPath);
     
     var xhr = new XMLHttpRequest();
